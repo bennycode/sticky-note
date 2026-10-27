@@ -15,98 +15,76 @@ enum StickyNoteApp {
   }
 }
 
-final class NoteStore {
-  private let fileURL: URL
-
-  init() {
-    let directory = FileManager.default
-      .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-      .appendingPathComponent("StickyNote", isDirectory: true)
-    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    fileURL = directory.appendingPathComponent("note.txt")
-  }
-
-  func load() -> String {
-    (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-  }
-
-  func save(_ text: String) {
-    try? text.write(to: fileURL, atomically: true, encoding: .utf8)
-  }
-}
-
-extension NSColor {
-  static var noteBackground: NSColor {
-    NSColor(name: nil) { appearance in
-      appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        ? NSColor(srgbRed: 0.36, green: 0.31, blue: 0.12, alpha: 1)
-        : NSColor(srgbRed: 1.0, green: 0.93, blue: 0.56, alpha: 1)
-    }
-  }
-
-  static var noteText: NSColor {
-    NSColor(name: nil) { appearance in
-      appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        ? NSColor(srgbRed: 1.0, green: 0.96, blue: 0.82, alpha: 1)
-        : NSColor(srgbRed: 0.2, green: 0.17, blue: 0.05, alpha: 1)
-    }
-  }
-}
-
-final class NoteWindow: NSWindow {
-  override var canBecomeKey: Bool { true }
-  override var canBecomeMain: Bool { true }
-}
-
-final class NoteBackgroundView: NSView {
-  override init(frame frameRect: NSRect) {
-    super.init(frame: frameRect)
-    wantsLayer = true
-  }
-
-  required init?(coder: NSCoder) {
-    fatalError("init(coder:) has not been implemented")
-  }
-
-  override var wantsUpdateLayer: Bool { true }
-
-  override func updateLayer() {
-    guard let layer else { return }
-    layer.backgroundColor = NSColor.noteBackground.cgColor
-    layer.cornerRadius = 20
-    layer.cornerCurve = .continuous
-    layer.masksToBounds = true
-  }
-}
-
-/// The strip along the top edge that moves the window, since the text view takes every click below it.
-final class DragHandleView: NSView {
-  override func mouseDown(with event: NSEvent) {
-    window?.performDrag(with: event)
-  }
-}
-
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NSMenuItemValidation {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NSMenuItemValidation,
+  ChecklistViewDelegate
+{
   private static let frameAutosaveName = "StickyNoteWindow"
   private static let handleHeight: CGFloat = 24
 
   private let store = NoteStore()
+  private var note = Note()
   private var window: NoteWindow!
+  private var contentArea: NSView!
+  private var textScrollView: NSScrollView!
   private var textView: NSTextView!
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    note = store.load()
     NSApp.mainMenu = makeMainMenu()
     window = makeWindow()
+    showNoteContent()
     window.orderFrontRegardless()
   }
 
   func applicationWillTerminate(_ notification: Notification) {
-    store.save(textView.string)
+    store.save(note)
   }
 
   func textDidChange(_ notification: Notification) {
-    store.save(textView.string)
+    note.text = textView.string
+    store.save(note)
+  }
+
+  func checklistViewDidChange(_ checklistView: ChecklistView) {
+    note.items = checklistView.items
+    note.showsCheckedItems = checklistView.showsCheckedItems
+    store.save(note)
+  }
+
+  private func showNoteContent() {
+    contentArea.subviews.forEach { $0.removeFromSuperview() }
+    switch note.mode {
+    case .text:
+      textView.string = note.text
+      textScrollView.frame = contentArea.bounds
+      contentArea.addSubview(textScrollView)
+    case .checklist:
+      let checklistView = ChecklistView(
+        frame: contentArea.bounds,
+        items: note.items,
+        showsCheckedItems: note.showsCheckedItems
+      )
+      checklistView.autoresizingMask = [.width, .height]
+      checklistView.delegate = self
+      contentArea.addSubview(checklistView)
+    }
+  }
+
+  @objc private func toggleCheckboxes(_ sender: Any?) {
+    switch note.mode {
+    case .text:
+      note.items = note.text
+        .components(separatedBy: .newlines)
+        .compactMap(ChecklistItem.init(line:))
+      note.mode = .checklist
+    case .checklist:
+      note.text = note.items.map(\.text).joined(separator: "\n")
+      note.items = []
+      note.mode = .text
+    }
+    store.save(note)
+    showNoteContent()
   }
 
   private func makeWindow() -> NoteWindow {
@@ -146,15 +124,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     handle.toolTip = "Drag to move, right-click for options"
     background.addSubview(handle)
 
-    let scrollView = NSTextView.scrollableTextView()
-    scrollView.frame = NSRect(x: 0, y: 0, width: size.width, height: size.height - Self.handleHeight)
-    scrollView.autoresizingMask = [.width, .height]
-    scrollView.drawsBackground = false
-    scrollView.hasVerticalScroller = true
-    scrollView.autohidesScrollers = true
-    scrollView.scrollerStyle = .overlay
+    contentArea = NoteContentView(frame: NSRect(x: 0, y: 0, width: size.width, height: size.height - Self.handleHeight))
+    contentArea.autoresizingMask = [.width, .height]
+    background.addSubview(contentArea)
+    window.initialFirstResponder = contentArea
 
-    let textView = scrollView.documentView as! NSTextView
+    textScrollView = NSTextView.scrollableTextView()
+    textScrollView.autoresizingMask = [.width, .height]
+    textScrollView.drawsBackground = false
+    textScrollView.hasVerticalScroller = true
+    textScrollView.autohidesScrollers = true
+    textScrollView.scrollerStyle = .overlay
+
+    textView = textScrollView.documentView as? NSTextView
     textView.drawsBackground = false
     textView.isRichText = false
     textView.allowsUndo = true
@@ -164,10 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     textView.textColor = .noteText
     textView.insertionPointColor = .noteText
     textView.textContainerInset = NSSize(width: 12, height: 4)
-    textView.string = store.load()
     textView.delegate = self
-    background.addSubview(scrollView)
-    self.textView = textView
 
     window.setFrameUsingName(Self.frameAutosaveName)
     window.setFrameAutosaveName(Self.frameAutosaveName)
@@ -176,6 +155,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
 
   private func makeContextMenu() -> NSMenu {
     let menu = NSMenu()
+    let checkboxesItem = NSMenuItem(title: "Show Checkboxes", action: #selector(toggleCheckboxes(_:)), keyEquivalent: "")
+    checkboxesItem.target = self
+    menu.addItem(checkboxesItem)
     let loginItem = NSMenuItem(title: "Open at Login", action: #selector(toggleOpenAtLogin(_:)), keyEquivalent: "")
     loginItem.target = self
     menu.addItem(loginItem)
@@ -208,6 +190,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     editMenuItem.submenu = editMenu
     mainMenu.addItem(editMenuItem)
 
+    let noteMenu = NSMenu(title: "Note")
+    let checkboxesItem = NSMenuItem(title: "Show Checkboxes", action: #selector(toggleCheckboxes(_:)), keyEquivalent: "l")
+    checkboxesItem.keyEquivalentModifierMask = [.command, .shift]
+    checkboxesItem.target = self
+    noteMenu.addItem(checkboxesItem)
+    let noteMenuItem = NSMenuItem()
+    noteMenuItem.submenu = noteMenu
+    mainMenu.addItem(noteMenuItem)
+
     return mainMenu
   }
 
@@ -225,8 +216,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
   }
 
   func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-    if menuItem.action == #selector(toggleOpenAtLogin(_:)) {
+    switch menuItem.action {
+    case #selector(toggleCheckboxes(_:)):
+      menuItem.title = note.mode == .checklist ? "Hide Checkboxes" : "Show Checkboxes"
+    case #selector(toggleOpenAtLogin(_:)):
       menuItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+    default:
+      break
     }
     return true
   }

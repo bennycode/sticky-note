@@ -10,7 +10,7 @@ cp Info.plist "$APP/Contents/Info.plist"
 
 swiftc -O -parse-as-library \
   -target "$(uname -m)-apple-macos13.0" \
-  Sources/StickyNote.swift \
+  Sources/*.swift \
   -o "$APP/Contents/MacOS/StickyNote"
 
 codesign --force --sign - "$APP"

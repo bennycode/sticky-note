@@ -20,7 +20,12 @@ Move the app to `/Applications` if you want to keep it around.
 - **Type:** click anywhere in the note.
 - **Move:** drag the strip along the top edge.
 - **Resize:** drag any edge.
-- **Options:** right-click the top strip for "Open at Login" and "Quit".
+- **Checklist:** press <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>L</kbd> or right-click the top strip and choose "Show Checkboxes". Each line becomes an item, and markers like `- ` or `[x] ` are picked up.
+  - <kbd>Return</kbd> starts a new item (splitting the current one at the caret).
+  - <kbd>⌫</kbd> at the start of an item merges it into the one above, or removes it when empty.
+  - <kbd>↑</kbd> <kbd>↓</kbd> move between items.
+  - Checked items move into a collapsible "checked items" section at the bottom.
+- **Options:** right-click the top strip for "Show/Hide Checkboxes", "Open at Login" and "Quit".
 - **Quit:** <kbd>⌘</kbd> <kbd>Q</kbd> while the note is focused, or use the right-click menu.
 
-Your text is saved as you type to `~/Library/Application Support/StickyNote/note.txt`. Window position and size are remembered too.
+Your note is saved as you type to `~/Library/Application Support/StickyNote/note.json`. Window position and size are remembered too.
