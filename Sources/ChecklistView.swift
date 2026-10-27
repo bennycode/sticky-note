@@ -19,6 +19,7 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
   private var font: NSFont { .systemFont(ofSize: fontSize) }
   private let stackView = NSStackView()
   private var fields: [UUID: NSTextField] = [:]
+  private var rows: [UUID: ChecklistRowView] = [:]
 
   init(frame frameRect: NSRect, items: [ChecklistItem], showsCheckedItems: Bool, fontSize: CGFloat) {
     self.items = items.isEmpty ? [ChecklistItem(text: "")] : items
@@ -50,7 +51,7 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
       documentView.leadingAnchor.constraint(equalTo: clipView.leadingAnchor),
       documentView.widthAnchor.constraint(equalTo: clipView.widthAnchor),
       stackView.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 4),
-      stackView.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 16),
+      stackView.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 2),
       stackView.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -16),
       stackView.bottomAnchor.constraint(equalTo: documentView.bottomAnchor, constant: -14),
     ])
@@ -69,11 +70,12 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
     window?.makeFirstResponder(nil)
     stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
     fields.removeAll()
+    rows.removeAll()
 
     for item in items where !item.isChecked {
       addFullWidth(makeRow(for: item))
     }
-    let addButton = makeTextButton(title: "List item", symbolName: "plus", action: #selector(addItem))
+    let addButton = indented(makeTextButton(title: "List item", symbolName: "plus", action: #selector(addItem)))
     stackView.addArrangedSubview(addButton)
 
     let checkedItems = items.filter(\.isChecked)
@@ -90,10 +92,12 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
 
     let noun = checkedItems.count == 1 ? "item" : "items"
     stackView.addArrangedSubview(
-      makeTextButton(
-        title: "\(checkedItems.count) checked \(noun)",
-        symbolName: showsCheckedItems ? "chevron.down" : "chevron.right",
-        action: #selector(toggleCheckedItems)
+      indented(
+        makeTextButton(
+          title: "\(checkedItems.count) checked \(noun)",
+          symbolName: showsCheckedItems ? "chevron.down" : "chevron.right",
+          action: #selector(toggleCheckedItems)
+        )
       )
     )
     if showsCheckedItems {
@@ -106,6 +110,20 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
   private func addFullWidth(_ view: NSView) {
     stackView.addArrangedSubview(view)
     view.widthAnchor.constraint(equalTo: stackView.widthAnchor).isActive = true
+  }
+
+  /// Lines a view up with the checkboxes, which sit to the right of the drag handles.
+  private func indented(_ view: NSView) -> NSView {
+    let container = NSView()
+    view.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(view)
+    NSLayoutConstraint.activate([
+      view.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: ChecklistRowView.handleWidth),
+      view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+      view.topAnchor.constraint(equalTo: container.topAnchor),
+      view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+    ])
+    return container
   }
 
   private func makeRow(for item: ChecklistItem) -> NSView {
@@ -134,15 +152,22 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
     applyStyle(of: item, to: field)
     fields[item.id] = field
 
-    let row = NSView()
-    for view in [checkbox, field] {
+    let row = ChecklistRowView()
+    let id = item.id
+    row.handle.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: max(10, fontSize - 4), weight: .semibold)
+    row.handle.onMouseDown = { [weak self] event in self?.dragItem(withID: id, startingWith: event) }
+    rows[item.id] = row
+    for view in [row.handle, checkbox, field] {
       view.translatesAutoresizingMaskIntoConstraints = false
       row.addSubview(view)
     }
     // Center the circle on the first line of text, so it stays put when the item wraps.
     let firstLineHeight = NSLayoutManager().defaultLineHeight(for: font)
     NSLayoutConstraint.activate([
-      checkbox.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+      row.handle.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+      row.handle.widthAnchor.constraint(equalToConstant: ChecklistRowView.handleWidth),
+      row.handle.centerYAnchor.constraint(equalTo: checkbox.centerYAnchor),
+      checkbox.leadingAnchor.constraint(equalTo: row.handle.trailingAnchor),
       checkbox.widthAnchor.constraint(equalToConstant: ceil(fontSize + 6)),
       checkbox.centerYAnchor.constraint(equalTo: field.topAnchor, constant: firstLineHeight / 2),
       field.leadingAnchor.constraint(equalTo: checkbox.trailingAnchor, constant: 6),
@@ -200,6 +225,72 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
     showsCheckedItems.toggle()
     reload()
     delegate?.checklistViewDidChange(self)
+  }
+
+  // MARK: - Reordering
+
+  private func dragItem(withID id: UUID, startingWith mouseDown: NSEvent) {
+    guard let window, let row = rows[id], let documentView = stackView.superview else { return }
+    window.makeFirstResponder(nil)
+    row.isDragging = true
+    NSCursor.closedHand.push()
+    var didMove = false
+
+    window.trackEvents(matching: [.leftMouseDragged, .leftMouseUp], timeout: NSEvent.foreverDuration, mode: .eventTracking) { event, stop in
+      guard let event, event.type == .leftMouseDragged else {
+        stop.pointee = true
+        return
+      }
+      let y = documentView.convert(event.locationInWindow, from: nil).y
+      if let position = dropPosition(forItemWithID: id, atY: y, in: documentView), moveItem(withID: id, to: position) {
+        didMove = true
+      }
+      row.autoscroll(with: event)
+    }
+
+    NSCursor.pop()
+    row.isDragging = false
+    if didMove {
+      delegate?.checklistViewDidChange(self)
+    }
+  }
+
+  /// The item's new position within its section: the number of other items whose middle is above `y`.
+  private func dropPosition(forItemWithID id: UUID, atY y: CGFloat, in documentView: NSView) -> Int? {
+    guard let item = items.first(where: { $0.id == id }) else { return nil }
+    return items
+      .filter { $0.isChecked == item.isChecked && $0.id != id }
+      .compactMap { rows[$0.id] }
+      .filter { $0.convert($0.bounds, to: documentView).midY < y }
+      .count
+  }
+
+  /// Moves an item to `position` within its section (unchecked or checked) and returns whether anything changed.
+  @discardableResult
+  func moveItem(withID id: UUID, to position: Int) -> Bool {
+    guard let item = items.first(where: { $0.id == id }) else { return false }
+    let section = items.filter { $0.isChecked == item.isChecked }.map(\.id)
+    let others = section.filter { $0 != id }
+    let position = min(max(position, 0), others.count)
+    guard position != section.firstIndex(of: id) else { return false }
+
+    let sectionStart = section.compactMap { rows[$0] }.compactMap { stackView.arrangedSubviews.firstIndex(of: $0) }.min()
+    items.removeAll { $0.id == id }
+    let anchorIndex = position < others.count
+      ? items.firstIndex { $0.id == others[position] }
+      : items.firstIndex { $0.id == others[others.count - 1] }.map { $0 + 1 }
+    items.insert(item, at: anchorIndex ?? items.count)
+
+    if let row = rows[id], let sectionStart {
+      stackView.removeArrangedSubview(row)
+      stackView.insertArrangedSubview(row, at: sectionStart + position)
+      NSAnimationContext.runAnimationGroup { context in
+        context.duration = 0.15
+        context.allowsImplicitAnimation = true
+        stackView.layoutSubtreeIfNeeded()
+      }
+    }
+    return true
   }
 
   // MARK: - Editing
@@ -291,6 +382,75 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
   private func itemIndex(for view: NSView) -> Int? {
     guard let rawValue = view.identifier?.rawValue, let id = UUID(uuidString: rawValue) else { return nil }
     return items.firstIndex { $0.id == id }
+  }
+}
+
+/// A checklist row that shows its drag handle while the pointer is over it, and highlights while being dragged.
+private final class ChecklistRowView: NSView {
+  static let handleWidth: CGFloat = 16
+
+  let handle = DragHandleImageView()
+  private var isHovered = false {
+    didSet { updateHandle() }
+  }
+
+  var isDragging = false {
+    didSet {
+      needsDisplay = true
+      updateHandle()
+    }
+  }
+
+  init() {
+    super.init(frame: .zero)
+    wantsLayer = true
+    handle.image = NSImage(systemSymbolName: "line.3.horizontal", accessibilityDescription: "Drag to reorder")
+    handle.contentTintColor = .noteSecondaryText
+    handle.toolTip = "Drag to reorder"
+    updateHandle()
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
+  override var wantsUpdateLayer: Bool { true }
+
+  override func updateLayer() {
+    layer?.cornerRadius = 8
+    layer?.backgroundColor = isDragging ? NSColor.noteSeparator.cgColor : nil
+  }
+
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    trackingAreas.forEach(removeTrackingArea)
+    addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+
+  override func mouseEntered(with event: NSEvent) {
+    isHovered = true
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    isHovered = false
+  }
+
+  private func updateHandle() {
+    handle.alphaValue = isHovered || isDragging ? 1 : 0
+  }
+}
+
+private final class DragHandleImageView: NSImageView {
+  var onMouseDown: ((NSEvent) -> Void)?
+
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+  override func mouseDown(with event: NSEvent) {
+    onMouseDown?(event)
+  }
+
+  override func resetCursorRects() {
+    addCursorRect(bounds, cursor: .openHand)
   }
 }
 

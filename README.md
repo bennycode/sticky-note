@@ -32,6 +32,7 @@ STICKY_NOTE_DIR=/tmp/test-note "build/Sticky Note.app/Contents/MacOS/StickyNote"
   - <kbd>Return</kbd> starts a new item (splitting the current one at the caret).
   - <kbd>⌫</kbd> at the start of an item merges it into the one above, or removes it when empty.
   - <kbd>↑</kbd> <kbd>↓</kbd> move between items.
+  - Hover over an item and drag the ☰ handle on its left to reorder it.
   - Checked items move into a collapsible "checked items" section at the bottom.
 - **Text size:** click the "aA" icon in the bottom-right corner, or use <kbd>⌘</kbd> <kbd>+</kbd>, <kbd>⌘</kbd> <kbd>−</kbd> and <kbd>⌘</kbd> <kbd>0</kbd>.
 - **Options:** right-click the top strip for "Show/Hide Checkboxes", "Open at Login" and "Quit".
