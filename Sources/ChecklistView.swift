@@ -229,10 +229,19 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
 
   // MARK: - Reordering
 
+  /// Lifts the row into a floating copy that follows the pointer, while the real row stays behind as an invisible
+  /// placeholder that slides into place among the others. On release the copy settles into the placeholder's spot.
   private func dragItem(withID id: UUID, startingWith mouseDown: NSEvent) {
     guard let window, let row = rows[id], let documentView = stackView.superview else { return }
+    // End editing first, so the snapshot doesn't capture a caret or selected text.
     window.makeFirstResponder(nil)
-    row.isDragging = true
+    guard let snapshot = row.snapshot() else { return }
+
+    let startFrame = FloatingRowView.frame(around: row.convert(row.bounds, to: documentView))
+    let startY = documentView.convert(mouseDown.locationInWindow, from: nil).y
+    let floatingRow = FloatingRowView(frame: startFrame, snapshot: snapshot)
+    documentView.addSubview(floatingRow)
+    row.alphaValue = 0
     NSCursor.closedHand.push()
     var didMove = false
 
@@ -242,14 +251,27 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
         return
       }
       let y = documentView.convert(event.locationInWindow, from: nil).y
-      if let position = dropPosition(forItemWithID: id, atY: y, in: documentView), moveItem(withID: id, to: position) {
+      let maxY = max(0, documentView.bounds.height - startFrame.height)
+      floatingRow.setFrameOrigin(NSPoint(x: startFrame.minX, y: min(max(startFrame.minY + y - startY, 0), maxY)))
+      if let position = dropPosition(forItemWithID: id, atY: floatingRow.frame.midY, in: documentView),
+         moveItem(withID: id, to: position)
+      {
         didMove = true
       }
-      row.autoscroll(with: event)
+      floatingRow.autoscroll(with: event)
     }
 
     NSCursor.pop()
-    row.isDragging = false
+    let finalFrame = FloatingRowView.frame(around: row.convert(row.bounds, to: documentView))
+    floatingRow.settle(duration: 0.18)
+    NSAnimationContext.runAnimationGroup { context in
+      context.duration = 0.18
+      context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+      floatingRow.animator().frame = finalFrame
+    } completionHandler: {
+      row.alphaValue = 1
+      floatingRow.removeFromSuperview()
+    }
     if didMove {
       delegate?.checklistViewDidChange(self)
     }
@@ -285,7 +307,8 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
       stackView.removeArrangedSubview(row)
       stackView.insertArrangedSubview(row, at: sectionStart + position)
       NSAnimationContext.runAnimationGroup { context in
-        context.duration = 0.15
+        context.duration = 0.2
+        context.timingFunction = CAMediaTimingFunction(name: .easeOut)
         context.allowsImplicitAnimation = true
         stackView.layoutSubtreeIfNeeded()
       }
@@ -394,13 +417,6 @@ private final class ChecklistRowView: NSView {
     didSet { updateHandle() }
   }
 
-  var isDragging = false {
-    didSet {
-      needsDisplay = true
-      updateHandle()
-    }
-  }
-
   init() {
     super.init(frame: .zero)
     wantsLayer = true
@@ -414,11 +430,15 @@ private final class ChecklistRowView: NSView {
     fatalError("init(coder:) has not been implemented")
   }
 
-  override var wantsUpdateLayer: Bool { true }
-
-  override func updateLayer() {
-    layer?.cornerRadius = 8
-    layer?.backgroundColor = isDragging ? NSColor.noteSeparator.cgColor : nil
+  /// An image of the row without its drag handle, for the copy that follows the pointer.
+  func snapshot() -> NSImage? {
+    handle.alphaValue = 0
+    defer { updateHandle() }
+    guard let bitmap = bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+    cacheDisplay(in: bounds, to: bitmap)
+    let image = NSImage(size: bounds.size)
+    image.addRepresentation(bitmap)
+    return image
   }
 
   override func updateTrackingAreas() {
@@ -436,7 +456,68 @@ private final class ChecklistRowView: NSView {
   }
 
   private func updateHandle() {
-    handle.alphaValue = isHovered || isDragging ? 1 : 0
+    handle.alphaValue = isHovered ? 1 : 0
+  }
+}
+
+/// The copy of a row that follows the pointer while dragging: the note's color, rounded, with a soft shadow.
+private final class FloatingRowView: NSView {
+  private static let liftedShadowOpacity: Float = 0.2
+  private static let padding = NSEdgeInsets(top: 4, left: 0, bottom: 4, right: 6)
+  private var isLifted = true
+
+  /// The card's frame for a row: a little larger than the row, so the text doesn't touch its edges. The left side
+  /// needs no padding because the row starts with its (hidden) drag handle.
+  static func frame(around rowFrame: NSRect) -> NSRect {
+    NSRect(
+      x: rowFrame.minX - padding.left,
+      y: rowFrame.minY - padding.top,
+      width: rowFrame.width + padding.left + padding.right,
+      height: rowFrame.height + padding.top + padding.bottom
+    )
+  }
+
+  init(frame frameRect: NSRect, snapshot: NSImage) {
+    super.init(frame: frameRect)
+    wantsLayer = true
+    let imageView = NSImageView(image: snapshot)
+    imageView.frame = NSRect(
+      x: Self.padding.left,
+      y: Self.padding.bottom,
+      width: snapshot.size.width,
+      height: snapshot.size.height
+    )
+    imageView.imageScaling = .scaleNone
+    imageView.imageAlignment = .alignTopLeft
+    addSubview(imageView)
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
+  override var wantsUpdateLayer: Bool { true }
+
+  override func updateLayer() {
+    guard let layer else { return }
+    layer.cornerRadius = 8
+    layer.masksToBounds = false
+    layer.backgroundColor = NSColor.noteBackground.cgColor
+    layer.shadowColor = NSColor.black.cgColor
+    layer.shadowOpacity = isLifted ? Self.liftedShadowOpacity : 0
+    layer.shadowRadius = 8
+    layer.shadowOffset = CGSize(width: 0, height: -3)
+  }
+
+  /// Fades the shadow out, so the row looks like it drops back onto the note.
+  func settle(duration: TimeInterval) {
+    isLifted = false
+    let fade = CABasicAnimation(keyPath: "shadowOpacity")
+    fade.fromValue = Self.liftedShadowOpacity
+    fade.toValue = 0
+    fade.duration = duration
+    layer?.add(fade, forKey: "settle")
+    layer?.shadowOpacity = 0
   }
 }
 
