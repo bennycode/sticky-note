@@ -20,7 +20,7 @@ Move the app to `/Applications` if you want to keep it around.
 - **Type:** click anywhere in the note.
 - **Move:** drag the strip along the top edge.
 - **Resize:** drag any edge.
-- **Checklist:** press <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>L</kbd> or right-click the top strip and choose "Show Checkboxes". Each line becomes an item, and markers like `- ` or `[x] ` are picked up.
+- **Checklist:** click the checkbox icon in the bottom-left corner, or press <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>L</kbd>. Each line becomes an item, and markers like `- ` or `[x] ` are picked up.
   - <kbd>Return</kbd> starts a new item (splitting the current one at the caret).
   - <kbd>⌫</kbd> at the start of an item merges it into the one above, or removes it when empty.
   - <kbd>↑</kbd> <kbd>↓</kbd> move between items.

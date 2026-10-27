@@ -58,6 +58,11 @@ final class NoteContentView: NSView {
   override var acceptsFirstResponder: Bool { true }
 }
 
+/// A button that responds to the first click even while another app is active, like controls on a widget.
+final class FirstClickButton: NSButton {
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 /// The strip along the top edge that moves the window, since the note content takes every click below it.
 final class DragHandleView: NSView {
   override func mouseDown(with event: NSEvent) {

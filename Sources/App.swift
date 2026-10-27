@@ -21,11 +21,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
 {
   private static let frameAutosaveName = "StickyNoteWindow"
   private static let handleHeight: CGFloat = 24
+  private static let footerHeight: CGFloat = 30
 
   private let store = NoteStore()
   private var note = Note()
   private var window: NoteWindow!
   private var contentArea: NSView!
+  private var checkboxesButton: NSButton!
   private var textScrollView: NSScrollView!
   private var textView: NSTextView!
 
@@ -69,6 +71,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
       checklistView.delegate = self
       contentArea.addSubview(checklistView)
     }
+    updateCheckboxesButton()
+  }
+
+  private func updateCheckboxesButton() {
+    let isChecklist = note.mode == .checklist
+    checkboxesButton.image = NSImage(
+      systemSymbolName: isChecklist ? "checkmark.square.fill" : "checkmark.square",
+      accessibilityDescription: isChecklist ? "Hide Checkboxes" : "Show Checkboxes"
+    )
+    checkboxesButton.contentTintColor = isChecklist ? .noteText : .noteSecondaryText
+    checkboxesButton.toolTip = isChecklist ? "Hide Checkboxes (⇧⌘L)" : "Show Checkboxes (⇧⌘L)"
   }
 
   @objc private func toggleCheckboxes(_ sender: Any?) {
@@ -124,10 +137,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     handle.toolTip = "Drag to move, right-click for options"
     background.addSubview(handle)
 
-    contentArea = NoteContentView(frame: NSRect(x: 0, y: 0, width: size.width, height: size.height - Self.handleHeight))
+    contentArea = NoteContentView(
+      frame: NSRect(
+        x: 0,
+        y: Self.footerHeight,
+        width: size.width,
+        height: size.height - Self.handleHeight - Self.footerHeight
+      )
+    )
     contentArea.autoresizingMask = [.width, .height]
     background.addSubview(contentArea)
     window.initialFirstResponder = contentArea
+
+    checkboxesButton = FirstClickButton(frame: NSRect(x: 10, y: 6, width: 22, height: 22))
+    checkboxesButton.isBordered = false
+    checkboxesButton.imageScaling = .scaleProportionallyUpOrDown
+    checkboxesButton.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+    checkboxesButton.target = self
+    checkboxesButton.action = #selector(toggleCheckboxes(_:))
+    checkboxesButton.autoresizingMask = [.maxXMargin, .maxYMargin]
+    background.addSubview(checkboxesButton)
 
     textScrollView = NSTextView.scrollableTextView()
     textScrollView.autoresizingMask = [.width, .height]
