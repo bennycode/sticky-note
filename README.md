@@ -6,7 +6,21 @@ A post-it note that lives on your macOS desktop, styled like the built-in widget
 
 macOS widgets (WidgetKit) can't take keyboard input, so this is a small borderless app window that sits at desktop level instead: behind your other windows, on every Space, with no Dock icon.
 
-## Build
+## Install
+
+Requires macOS 13 or later, on Apple Silicon or Intel.
+
+1. Download `Sticky-Note.zip` from the [latest release](https://github.com/bennycode/sticky-note/releases/latest) and unzip it.
+2. Move `Sticky Note.app` to `/Applications`.
+3. Open it.
+
+The app isn't notarized by Apple, so macOS blocks the first launch. To allow it, go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. Or remove the download flag in Terminal:
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/Sticky Note.app"
+```
+
+## Build from source
 
 Requires the Xcode command line tools.
 
@@ -14,8 +28,6 @@ Requires the Xcode command line tools.
 ./build.sh
 open "build/Sticky Note.app"
 ```
-
-Move the app to `/Applications` if you want to keep it around.
 
 ## Development
 
