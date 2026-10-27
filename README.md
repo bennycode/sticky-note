@@ -2,6 +2,8 @@
 
 A post-it note that lives on your macOS desktop, styled like the built-in widgets. Click into it and type.
 
+<img src="docs/screenshot.png" width="404" alt="Sticky Note on the desktop, showing a checklist with four open items and two checked items">
+
 macOS widgets (WidgetKit) can't take keyboard input, so this is a small borderless app window that sits at desktop level instead: behind your other windows, on every Space, with no Dock icon.
 
 ## Build
