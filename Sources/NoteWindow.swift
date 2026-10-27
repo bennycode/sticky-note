@@ -86,6 +86,47 @@ final class FooterIconButton: FirstClickButton {
   }
 }
 
+/// The diagonal lines in the bottom-right corner. Dragging them resizes the note while its top-left corner stays put.
+final class ResizeGripView: NSView {
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+  override func draw(_ dirtyRect: NSRect) {
+    let path = NSBezierPath()
+    path.lineWidth = 1.5
+    path.lineCapStyle = .round
+    for length in [6.0, 11.0] {
+      path.move(to: NSPoint(x: bounds.maxX - length, y: bounds.minY + 1))
+      path.line(to: NSPoint(x: bounds.maxX - 1, y: bounds.minY + length))
+    }
+    NSColor.noteSecondaryText.setStroke()
+    path.stroke()
+  }
+
+  override func resetCursorRects() {
+    if #available(macOS 15.0, *) {
+      addCursorRect(bounds, cursor: .frameResize(position: .bottomRight, directions: .all))
+    } else {
+      addCursorRect(bounds, cursor: .crosshair)
+    }
+  }
+
+  override func mouseDown(with event: NSEvent) {
+    guard let window else { return }
+    let startFrame = window.frame
+    let startPoint = NSEvent.mouseLocation
+    window.trackEvents(matching: [.leftMouseDragged, .leftMouseUp], timeout: NSEvent.foreverDuration, mode: .eventTracking) { event, stop in
+      guard let event, event.type == .leftMouseDragged else {
+        stop.pointee = true
+        return
+      }
+      let point = NSEvent.mouseLocation
+      let width = max(window.minSize.width, startFrame.width + point.x - startPoint.x)
+      let height = max(window.minSize.height, startFrame.height - (point.y - startPoint.y))
+      window.setFrame(NSRect(x: startFrame.minX, y: startFrame.maxY - height, width: width, height: height), display: true)
+    }
+  }
+}
+
 /// The strip along the top edge that moves the window, since the note content takes every click below it.
 final class DragHandleView: NSView {
   override func mouseDown(with event: NSEvent) {

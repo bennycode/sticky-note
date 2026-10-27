@@ -27,7 +27,7 @@ STICKY_NOTE_DIR=/tmp/test-note "build/Sticky Note.app/Contents/MacOS/StickyNote"
 
 - **Type:** click anywhere in the note.
 - **Move:** drag the strip along the top edge.
-- **Resize:** drag any edge.
+- **Resize:** drag the grip in the bottom-right corner, or any edge.
 - **Checklist:** click the checkbox icon in the bottom-left corner, or press <kbd>⇧</kbd> <kbd>⌘</kbd> <kbd>L</kbd>. Each line becomes an item, and markers like `- ` or `[x] ` are picked up.
   - <kbd>Return</kbd> starts a new item (splitting the current one at the caret).
   - <kbd>⌫</kbd> at the start of an item merges it into the one above, or removes it when empty.

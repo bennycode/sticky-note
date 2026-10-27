@@ -209,12 +209,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     background.addSubview(checkboxesButton)
 
     let fontSizeButton = FooterIconButton(symbolName: "textformat.size", label: "Text Size")
-    fontSizeButton.setFrameOrigin(NSPoint(x: size.width - 12 - fontSizeButton.frame.width, y: 8))
+    fontSizeButton.setFrameOrigin(NSPoint(x: size.width - 28 - fontSizeButton.frame.width, y: 8))
     fontSizeButton.toolTip = "Text Size (⌘+ / ⌘−)"
     fontSizeButton.target = self
     fontSizeButton.action = #selector(toggleFontSizePopover(_:))
     fontSizeButton.autoresizingMask = [.minXMargin, .maxYMargin]
     background.addSubview(fontSizeButton)
+
+    // Inset far enough that the lines stay clear of the rounded corner.
+    let resizeGrip = ResizeGripView(frame: NSRect(x: size.width - 24, y: 9, width: 14, height: 14))
+    resizeGrip.toolTip = "Drag to resize"
+    resizeGrip.autoresizingMask = [.minXMargin, .maxYMargin]
+    background.addSubview(resizeGrip)
 
     textScrollView = NSTextView.scrollableTextView()
     textScrollView.autoresizingMask = [.width, .height]
