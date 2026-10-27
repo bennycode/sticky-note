@@ -17,6 +17,8 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
   }
 
   private var font: NSFont { .systemFont(ofSize: fontSize) }
+  /// Space between items, scaled with the text so larger sizes don't feel cramped.
+  private var itemSpacing: CGFloat { (fontSize * 0.8).rounded() }
   private let stackView = NSStackView()
   private var fields: [UUID: NSTextField] = [:]
   private var rows: [UUID: ChecklistRowView] = [:]
@@ -41,7 +43,6 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
 
     stackView.orientation = .vertical
     stackView.alignment = .leading
-    stackView.spacing = 8
     stackView.translatesAutoresizingMaskIntoConstraints = false
     documentView.addSubview(stackView)
 
@@ -71,6 +72,7 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
     stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
     fields.removeAll()
     rows.removeAll()
+    stackView.spacing = itemSpacing
 
     for item in items where !item.isChecked {
       addFullWidth(makeRow(for: item))
@@ -86,7 +88,7 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
     separator.borderWidth = 0
     separator.fillColor = .noteSeparator
     separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
-    stackView.setCustomSpacing(12, after: addButton)
+    stackView.setCustomSpacing(itemSpacing + 4, after: addButton)
     addFullWidth(separator)
     stackView.setCustomSpacing(10, after: separator)
 
