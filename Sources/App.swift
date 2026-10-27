@@ -20,20 +20,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
   ChecklistViewDelegate
 {
   private static let frameAutosaveName = "StickyNoteWindow"
-  private static let handleHeight: CGFloat = 24
-  private static let footerHeight: CGFloat = 30
+  private static let handleHeight: CGFloat = 28
+  private static let footerHeight: CGFloat = 40
+  private static let fontSizes: [Double] = [11, 13, 15, 17, 20, 24, 28, 32]
 
   private let store = NoteStore()
   private var note = Note()
   private var window: NoteWindow!
   private var contentArea: NSView!
-  private var checkboxesButton: NSButton!
+  private var checklistView: ChecklistView?
+  private var checkboxesButton: FooterIconButton!
+  private let fontSizePopover = NSPopover()
+  private let fontSizeController = FontSizeViewController()
   private var textScrollView: NSScrollView!
   private var textView: NSTextView!
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     note = store.load()
     NSApp.mainMenu = makeMainMenu()
+    fontSizeController.onSmaller = { [weak self] in self?.stepFontSize(by: -1) }
+    fontSizeController.onBigger = { [weak self] in self?.stepFontSize(by: 1) }
+    fontSizePopover.contentViewController = fontSizeController
+    fontSizePopover.behavior = .transient
     window = makeWindow()
     showNoteContent()
     window.orderFrontRegardless()
@@ -56,31 +64,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
 
   private func showNoteContent() {
     contentArea.subviews.forEach { $0.removeFromSuperview() }
+    checklistView = nil
     switch note.mode {
     case .text:
       textView.string = note.text
+      textView.font = .systemFont(ofSize: note.fontSize)
       textScrollView.frame = contentArea.bounds
       contentArea.addSubview(textScrollView)
     case .checklist:
       let checklistView = ChecklistView(
         frame: contentArea.bounds,
         items: note.items,
-        showsCheckedItems: note.showsCheckedItems
+        showsCheckedItems: note.showsCheckedItems,
+        fontSize: note.fontSize
       )
       checklistView.autoresizingMask = [.width, .height]
       checklistView.delegate = self
       contentArea.addSubview(checklistView)
+      self.checklistView = checklistView
     }
     updateCheckboxesButton()
   }
 
+  @objc private func toggleFontSizePopover(_ sender: NSButton) {
+    if fontSizePopover.isShown {
+      fontSizePopover.performClose(nil)
+      return
+    }
+    updateFontSizeController()
+    fontSizePopover.show(relativeTo: sender.bounds, of: sender, preferredEdge: sender.isFlipped ? .minY : .maxY)
+  }
+
+  @objc private func increaseFontSize(_ sender: Any?) {
+    stepFontSize(by: 1)
+  }
+
+  @objc private func decreaseFontSize(_ sender: Any?) {
+    stepFontSize(by: -1)
+  }
+
+  @objc private func resetFontSize(_ sender: Any?) {
+    setFontSize(Note.defaultFontSize)
+  }
+
+  private func stepFontSize(by step: Int) {
+    let sizes = Self.fontSizes
+    let current = sizes.firstIndex { $0 >= note.fontSize } ?? sizes.count - 1
+    setFontSize(sizes[min(max(current + step, 0), sizes.count - 1)])
+  }
+
+  private func setFontSize(_ size: Double) {
+    guard size != note.fontSize else { return }
+    note.fontSize = size
+    store.save(note)
+    textView.font = .systemFont(ofSize: size)
+    checklistView?.fontSize = size
+    updateFontSizeController()
+  }
+
+  private var canShrinkFont: Bool { note.fontSize > Self.fontSizes[0] }
+  private var canGrowFont: Bool { note.fontSize < Self.fontSizes[Self.fontSizes.count - 1] }
+
+  private func updateFontSizeController() {
+    fontSizeController.update(fontSize: note.fontSize, canShrink: canShrinkFont, canGrow: canGrowFont)
+  }
+
   private func updateCheckboxesButton() {
     let isChecklist = note.mode == .checklist
-    checkboxesButton.image = NSImage(
-      systemSymbolName: isChecklist ? "checkmark.square.fill" : "checkmark.square",
-      accessibilityDescription: isChecklist ? "Hide Checkboxes" : "Show Checkboxes"
-    )
-    checkboxesButton.contentTintColor = isChecklist ? .noteText : .noteSecondaryText
+    checkboxesButton.setSymbol("checklist", label: isChecklist ? "Hide Checkboxes" : "Show Checkboxes")
+    checkboxesButton.contentTintColor = isChecklist ? .noteAccent : .noteSecondaryText
     checkboxesButton.toolTip = isChecklist ? "Hide Checkboxes (⇧⌘L)" : "Show Checkboxes (⇧⌘L)"
   }
 
@@ -149,14 +201,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     background.addSubview(contentArea)
     window.initialFirstResponder = contentArea
 
-    checkboxesButton = FirstClickButton(frame: NSRect(x: 10, y: 6, width: 22, height: 22))
-    checkboxesButton.isBordered = false
-    checkboxesButton.imageScaling = .scaleProportionallyUpOrDown
-    checkboxesButton.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+    checkboxesButton = FooterIconButton(symbolName: "checklist", label: "Show Checkboxes")
+    checkboxesButton.setFrameOrigin(NSPoint(x: 12, y: 8))
     checkboxesButton.target = self
     checkboxesButton.action = #selector(toggleCheckboxes(_:))
     checkboxesButton.autoresizingMask = [.maxXMargin, .maxYMargin]
     background.addSubview(checkboxesButton)
+
+    let fontSizeButton = FooterIconButton(symbolName: "textformat.size", label: "Text Size")
+    fontSizeButton.setFrameOrigin(NSPoint(x: size.width - 12 - fontSizeButton.frame.width, y: 8))
+    fontSizeButton.toolTip = "Text Size (⌘+ / ⌘−)"
+    fontSizeButton.target = self
+    fontSizeButton.action = #selector(toggleFontSizePopover(_:))
+    fontSizeButton.autoresizingMask = [.minXMargin, .maxYMargin]
+    background.addSubview(fontSizeButton)
 
     textScrollView = NSTextView.scrollableTextView()
     textScrollView.autoresizingMask = [.width, .height]
@@ -171,10 +229,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     textView.allowsUndo = true
     textView.isAutomaticQuoteSubstitutionEnabled = false
     textView.isAutomaticDashSubstitutionEnabled = false
-    textView.font = .systemFont(ofSize: 15)
+    textView.font = .systemFont(ofSize: note.fontSize)
     textView.textColor = .noteText
     textView.insertionPointColor = .noteText
-    textView.textContainerInset = NSSize(width: 12, height: 4)
+    textView.textContainerInset = NSSize(width: 14, height: 4)
     textView.delegate = self
 
     window.setFrameUsingName(Self.frameAutosaveName)
@@ -224,6 +282,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     checkboxesItem.keyEquivalentModifierMask = [.command, .shift]
     checkboxesItem.target = self
     noteMenu.addItem(checkboxesItem)
+    noteMenu.addItem(.separator())
+    // ⌘= is listed too, because ⌘+ needs Shift on most keyboards.
+    for (title, action, key) in [
+      ("Bigger", #selector(increaseFontSize(_:)), "+"),
+      ("Bigger", #selector(increaseFontSize(_:)), "="),
+      ("Smaller", #selector(decreaseFontSize(_:)), "-"),
+      ("Default Size", #selector(resetFontSize(_:)), "0"),
+    ] {
+      let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+      item.target = self
+      noteMenu.addItem(item)
+    }
     let noteMenuItem = NSMenuItem()
     noteMenuItem.submenu = noteMenu
     mainMenu.addItem(noteMenuItem)
@@ -250,6 +320,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
       menuItem.title = note.mode == .checklist ? "Hide Checkboxes" : "Show Checkboxes"
     case #selector(toggleOpenAtLogin(_:)):
       menuItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+    case #selector(increaseFontSize(_:)):
+      return canGrowFont
+    case #selector(decreaseFontSize(_:)):
+      return canShrinkFont
     default:
       break
     }

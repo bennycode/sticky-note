@@ -15,6 +15,14 @@ open "build/Sticky Note.app"
 
 Move the app to `/Applications` if you want to keep it around.
 
+## Development
+
+Set `STICKY_NOTE_DIR` to run a build against test data instead of your real note:
+
+```sh
+STICKY_NOTE_DIR=/tmp/test-note "build/Sticky Note.app/Contents/MacOS/StickyNote"
+```
+
 ## Usage
 
 - **Type:** click anywhere in the note.
@@ -25,6 +33,7 @@ Move the app to `/Applications` if you want to keep it around.
   - <kbd>⌫</kbd> at the start of an item merges it into the one above, or removes it when empty.
   - <kbd>↑</kbd> <kbd>↓</kbd> move between items.
   - Checked items move into a collapsible "checked items" section at the bottom.
+- **Text size:** click the "aA" icon in the bottom-right corner, or use <kbd>⌘</kbd> <kbd>+</kbd>, <kbd>⌘</kbd> <kbd>−</kbd> and <kbd>⌘</kbd> <kbd>0</kbd>.
 - **Options:** right-click the top strip for "Show/Hide Checkboxes", "Open at Login" and "Quit".
 - **Quit:** <kbd>⌘</kbd> <kbd>Q</kbd> while the note is focused, or use the right-click menu.
 

@@ -12,13 +12,18 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
   private(set) var items: [ChecklistItem]
   private(set) var showsCheckedItems: Bool
 
-  private let font = NSFont.systemFont(ofSize: 15)
+  var fontSize: CGFloat {
+    didSet { reload() }
+  }
+
+  private var font: NSFont { .systemFont(ofSize: fontSize) }
   private let stackView = NSStackView()
   private var fields: [UUID: NSTextField] = [:]
 
-  init(frame frameRect: NSRect, items: [ChecklistItem], showsCheckedItems: Bool) {
+  init(frame frameRect: NSRect, items: [ChecklistItem], showsCheckedItems: Bool, fontSize: CGFloat) {
     self.items = items.isEmpty ? [ChecklistItem(text: "")] : items
     self.showsCheckedItems = showsCheckedItems
+    self.fontSize = fontSize
     super.init(frame: frameRect)
 
     let scrollView = NSScrollView(frame: bounds)
@@ -35,7 +40,7 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
 
     stackView.orientation = .vertical
     stackView.alignment = .leading
-    stackView.spacing = 6
+    stackView.spacing = 8
     stackView.translatesAutoresizingMaskIntoConstraints = false
     documentView.addSubview(stackView)
 
@@ -45,8 +50,8 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
       documentView.leadingAnchor.constraint(equalTo: clipView.leadingAnchor),
       documentView.widthAnchor.constraint(equalTo: clipView.widthAnchor),
       stackView.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 4),
-      stackView.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 12),
-      stackView.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -14),
+      stackView.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 16),
+      stackView.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -16),
       stackView.bottomAnchor.constraint(equalTo: documentView.bottomAnchor, constant: -14),
     ])
 
@@ -68,21 +73,28 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
     for item in items where !item.isChecked {
       addFullWidth(makeRow(for: item))
     }
-    let addButton = makeTextButton(title: "+ List item", action: #selector(addItem))
+    let addButton = makeTextButton(title: "List item", symbolName: "plus", action: #selector(addItem))
     stackView.addArrangedSubview(addButton)
 
     let checkedItems = items.filter(\.isChecked)
     guard !checkedItems.isEmpty else { return }
 
     let separator = NSBox()
-    separator.boxType = .separator
+    separator.boxType = .custom
+    separator.borderWidth = 0
+    separator.fillColor = .noteSeparator
+    separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
+    stackView.setCustomSpacing(12, after: addButton)
     addFullWidth(separator)
-    stackView.setCustomSpacing(10, after: addButton)
+    stackView.setCustomSpacing(10, after: separator)
 
-    let chevron = showsCheckedItems ? "▾" : "▸"
     let noun = checkedItems.count == 1 ? "item" : "items"
     stackView.addArrangedSubview(
-      makeTextButton(title: "\(chevron) \(checkedItems.count) checked \(noun)", action: #selector(toggleCheckedItems))
+      makeTextButton(
+        title: "\(checkedItems.count) checked \(noun)",
+        symbolName: showsCheckedItems ? "chevron.down" : "chevron.right",
+        action: #selector(toggleCheckedItems)
+      )
     )
     if showsCheckedItems {
       for item in checkedItems {
@@ -99,7 +111,16 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
   private func makeRow(for item: ChecklistItem) -> NSView {
     let identifier = NSUserInterfaceItemIdentifier(item.id.uuidString)
 
-    let checkbox = NSButton(checkboxWithTitle: "", target: self, action: #selector(toggleItem(_:)))
+    let checkbox = FirstClickButton()
+    checkbox.setButtonType(.toggle)
+    checkbox.isBordered = false
+    checkbox.imagePosition = .imageOnly
+    checkbox.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: fontSize + 2, weight: .regular)
+    checkbox.image = NSImage(systemSymbolName: "circle", accessibilityDescription: "Mark as done")
+    checkbox.alternateImage = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Mark as not done")
+    checkbox.contentTintColor = item.isChecked ? .noteAccent : .noteSecondaryText
+    checkbox.target = self
+    checkbox.action = #selector(toggleItem(_:))
     checkbox.identifier = identifier
     checkbox.state = item.isChecked ? .on : .off
 
@@ -118,10 +139,13 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
       view.translatesAutoresizingMaskIntoConstraints = false
       row.addSubview(view)
     }
+    // Center the circle on the first line of text, so it stays put when the item wraps.
+    let firstLineHeight = NSLayoutManager().defaultLineHeight(for: font)
     NSLayoutConstraint.activate([
       checkbox.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-      checkbox.firstBaselineAnchor.constraint(equalTo: field.firstBaselineAnchor),
-      field.leadingAnchor.constraint(equalTo: checkbox.trailingAnchor, constant: 2),
+      checkbox.widthAnchor.constraint(equalToConstant: ceil(fontSize + 6)),
+      checkbox.centerYAnchor.constraint(equalTo: field.topAnchor, constant: firstLineHeight / 2),
+      field.leadingAnchor.constraint(equalTo: checkbox.trailingAnchor, constant: 6),
       field.trailingAnchor.constraint(equalTo: row.trailingAnchor),
       field.topAnchor.constraint(equalTo: row.topAnchor),
       field.bottomAnchor.constraint(equalTo: row.bottomAnchor),
@@ -140,12 +164,17 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
     field.attributedStringValue = NSAttributedString(string: item.text, attributes: attributes)
   }
 
-  private func makeTextButton(title: String, action: Selector) -> NSButton {
-    let button = NSButton(title: title, target: self, action: action)
+  private func makeTextButton(title: String, symbolName: String, action: Selector) -> NSButton {
+    let button = FirstClickButton(title: title, target: self, action: action)
     button.isBordered = false
+    let size = max(12, fontSize - 2)
+    button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+    button.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: size - 1, weight: .semibold)
+    button.imagePosition = .imageLeading
+    button.contentTintColor = .noteSecondaryText
     button.attributedTitle = NSAttributedString(
-      string: title,
-      attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.noteSecondaryText]
+      string: " \(title)",
+      attributes: [.font: NSFont.systemFont(ofSize: size, weight: .medium), .foregroundColor: NSColor.noteSecondaryText]
     )
     return button
   }

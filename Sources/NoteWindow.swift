@@ -2,26 +2,28 @@ import AppKit
 
 extension NSColor {
   static var noteBackground: NSColor {
-    NSColor(name: nil) { appearance in
-      appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        ? NSColor(srgbRed: 0.36, green: 0.31, blue: 0.12, alpha: 1)
-        : NSColor(srgbRed: 1.0, green: 0.93, blue: 0.56, alpha: 1)
-    }
+    dynamic(light: NSColor(srgbRed: 1.0, green: 0.96, blue: 0.75, alpha: 1), dark: NSColor(srgbRed: 0.24, green: 0.22, blue: 0.14, alpha: 1))
   }
 
   static var noteText: NSColor {
-    NSColor(name: nil) { appearance in
-      appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        ? NSColor(srgbRed: 1.0, green: 0.96, blue: 0.82, alpha: 1)
-        : NSColor(srgbRed: 0.2, green: 0.17, blue: 0.05, alpha: 1)
-    }
+    dynamic(light: NSColor(srgbRed: 0.13, green: 0.12, blue: 0.08, alpha: 1), dark: NSColor(srgbRed: 0.98, green: 0.95, blue: 0.86, alpha: 1))
   }
 
   static var noteSecondaryText: NSColor {
+    dynamic(light: NSColor(srgbRed: 0.13, green: 0.12, blue: 0.08, alpha: 0.45), dark: NSColor(srgbRed: 0.98, green: 0.95, blue: 0.86, alpha: 0.45))
+  }
+
+  static var noteSeparator: NSColor {
+    dynamic(light: NSColor(srgbRed: 0.13, green: 0.12, blue: 0.08, alpha: 0.1), dark: NSColor(srgbRed: 0.98, green: 0.95, blue: 0.86, alpha: 0.12))
+  }
+
+  static var noteAccent: NSColor {
+    dynamic(light: NSColor(srgbRed: 0.85, green: 0.6, blue: 0.05, alpha: 1), dark: NSColor(srgbRed: 1.0, green: 0.78, blue: 0.25, alpha: 1))
+  }
+
+  private static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
     NSColor(name: nil) { appearance in
-      appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        ? NSColor(srgbRed: 1.0, green: 0.96, blue: 0.82, alpha: 0.5)
-        : NSColor(srgbRed: 0.2, green: 0.17, blue: 0.05, alpha: 0.5)
+      appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
     }
   }
 }
@@ -46,7 +48,7 @@ final class NoteBackgroundView: NSView {
   override func updateLayer() {
     guard let layer else { return }
     layer.backgroundColor = NSColor.noteBackground.cgColor
-    layer.cornerRadius = 20
+    layer.cornerRadius = 24
     layer.cornerCurve = .continuous
     layer.masksToBounds = true
   }
@@ -59,8 +61,29 @@ final class NoteContentView: NSView {
 }
 
 /// A button that responds to the first click even while another app is active, like controls on a widget.
-final class FirstClickButton: NSButton {
+class FirstClickButton: NSButton {
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+/// A borderless SF Symbol button for the note's footer.
+final class FooterIconButton: FirstClickButton {
+  init(symbolName: String, label: String) {
+    super.init(frame: NSRect(x: 0, y: 0, width: 28, height: 28))
+    isBordered = false
+    imagePosition = .imageOnly
+    symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+    contentTintColor = .noteSecondaryText
+    setSymbol(symbolName, label: label)
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
+  func setSymbol(_ symbolName: String, label: String) {
+    image = NSImage(systemSymbolName: symbolName, accessibilityDescription: label)
+    setAccessibilityLabel(label)
+  }
 }
 
 /// The strip along the top edge that moves the window, since the note content takes every click below it.

@@ -31,10 +31,27 @@ struct Note: Codable {
     case checklist
   }
 
+  static let defaultFontSize: Double = 15
+
   var mode = Mode.text
   var text = ""
   var items: [ChecklistItem] = []
   var showsCheckedItems = true
+  var fontSize = Note.defaultFontSize
+
+  init(text: String = "") {
+    self.text = text
+  }
+
+  /// Fills in defaults for fields that notes saved by older versions don't have yet.
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    mode = try container.decodeIfPresent(Mode.self, forKey: .mode) ?? .text
+    text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+    items = try container.decodeIfPresent([ChecklistItem].self, forKey: .items) ?? []
+    showsCheckedItems = try container.decodeIfPresent(Bool.self, forKey: .showsCheckedItems) ?? true
+    fontSize = try container.decodeIfPresent(Double.self, forKey: .fontSize) ?? Note.defaultFontSize
+  }
 }
 
 final class NoteStore {
@@ -43,7 +60,9 @@ final class NoteStore {
   private let legacyTextURL: URL
 
   init() {
-    let directory = FileManager.default
+    // STICKY_NOTE_DIR lets a development build run against test data instead of your real note.
+    let directory = ProcessInfo.processInfo.environment["STICKY_NOTE_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+      ?? FileManager.default
       .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
       .appendingPathComponent("StickyNote", isDirectory: true)
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
