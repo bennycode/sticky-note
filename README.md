@@ -41,3 +41,7 @@ STICKY_NOTE_DIR=/tmp/test-note "build/Sticky Note.app/Contents/MacOS/StickyNote"
 - **Quit:** <kbd>⌘</kbd> <kbd>Q</kbd> while the note is focused, or use the right-click menu.
 
 Your note is saved as you type to `~/Library/Application Support/StickyNote/note.json`. Window position and size are remembered too.
+
+## License
+
+[MIT](LICENSE)
