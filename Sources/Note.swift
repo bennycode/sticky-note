@@ -1,9 +1,37 @@
 import Foundation
 
+/// The four Eisenhower quadrants, in reading order: urgent and important first, neither last.
+enum Quadrant: Int, Codable, CaseIterable {
+  case doFirst
+  case schedule
+  case delegate
+  case dontDo
+
+  var title: String {
+    switch self {
+    case .doFirst: return "Do first"
+    case .schedule: return "Schedule"
+    case .delegate: return "Delegate"
+    case .dontDo: return "Don't do"
+    }
+  }
+
+  var subtitle: String {
+    switch self {
+    case .doFirst: return "Urgent and important"
+    case .schedule: return "Important, not urgent"
+    case .delegate: return "Urgent, not important"
+    case .dontDo: return "Neither urgent nor important"
+    }
+  }
+}
+
 struct ChecklistItem: Codable, Equatable {
   var id = UUID()
   var text: String
   var isChecked = false
+  /// nil until the item is dragged into a quadrant. Kept while the note shows a plain list.
+  var quadrant: Quadrant?
 }
 
 extension ChecklistItem {
@@ -29,6 +57,8 @@ struct Note: Codable {
   enum Mode: String, Codable {
     case text
     case checklist
+    /// A checklist whose open items are split across the Eisenhower quadrants.
+    case matrix
   }
 
   static let defaultFontSize: Double = 15

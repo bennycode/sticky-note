@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
   private var contentArea: NSView!
   private var checklistView: ChecklistView?
   private var checkboxesButton: FooterIconButton!
+  private var matrixButton: FooterIconButton!
   private let fontSizePopover = NSPopover()
   private let fontSizeController = FontSizeViewController()
   private var textScrollView: NSScrollView!
@@ -71,11 +72,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
       textView.font = .systemFont(ofSize: note.fontSize)
       textScrollView.frame = contentArea.bounds
       contentArea.addSubview(textScrollView)
-    case .checklist:
+    case .checklist, .matrix:
       let checklistView = ChecklistView(
         frame: contentArea.bounds,
         items: note.items,
         showsCheckedItems: note.showsCheckedItems,
+        showsQuadrants: note.mode == .matrix,
         fontSize: note.fontSize
       )
       checklistView.autoresizingMask = [.width, .height]
@@ -83,7 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
       contentArea.addSubview(checklistView)
       self.checklistView = checklistView
     }
-    updateCheckboxesButton()
+    updateFooterButtons()
   }
 
   @objc private func toggleFontSizePopover(_ sender: NSButton) {
@@ -129,13 +131,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     fontSizeController.update(fontSize: note.fontSize, canShrink: canShrinkFont, canGrow: canGrowFont)
   }
 
-  private func updateCheckboxesButton() {
-    let isChecklist = note.mode == .checklist
-    checkboxesButton.setSymbol("checklist", label: isChecklist ? "Hide Checkboxes" : "Show Checkboxes")
-    checkboxesButton.contentTintColor = isChecklist ? .noteAccent : .noteSecondaryText
-    checkboxesButton.toolTip = isChecklist ? "Hide Checkboxes (⇧⌘L)" : "Show Checkboxes (⇧⌘L)"
+  private func updateFooterButtons() {
+    let isList = note.mode != .text
+    checkboxesButton.setSymbol("checklist", label: isList ? "Hide Checkboxes" : "Show Checkboxes")
+    checkboxesButton.contentTintColor = isList ? .noteAccent : .noteSecondaryText
+    checkboxesButton.toolTip = isList ? "Hide Checkboxes (⇧⌘L)" : "Show Checkboxes (⇧⌘L)"
+
+    let isMatrix = note.mode == .matrix
+    matrixButton.contentTintColor = isMatrix ? .noteAccent : .noteSecondaryText
+    matrixButton.setAccessibilityLabel(isMatrix ? "Hide Quadrants" : "Show Quadrants")
+    matrixButton.toolTip = isMatrix ? "Hide Quadrants (⇧⌘M)" : "Eisenhower Matrix (⇧⌘M)"
   }
 
+  /// Turns the note's lines into checklist items, or its items back into lines.
   @objc private func toggleCheckboxes(_ sender: Any?) {
     switch note.mode {
     case .text:
@@ -143,10 +151,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
         .components(separatedBy: .newlines)
         .compactMap(ChecklistItem.init(line:))
       note.mode = .checklist
-    case .checklist:
+    case .checklist, .matrix:
       note.text = note.items.map(\.text).joined(separator: "\n")
       note.items = []
       note.mode = .text
+    }
+    store.save(note)
+    showNoteContent()
+  }
+
+  /// Switches the checklist between one list and the four quadrants. Each item keeps the quadrant it was dragged
+  /// into, so switching back and forth doesn't lose the sorting.
+  @objc private func toggleMatrix(_ sender: Any?) {
+    if note.mode == .matrix {
+      note.mode = .checklist
+    } else {
+      if note.mode == .text {
+        toggleCheckboxes(sender)
+      }
+      note.mode = .matrix
     }
     store.save(note)
     showNoteContent()
@@ -208,6 +231,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     checkboxesButton.autoresizingMask = [.maxXMargin, .maxYMargin]
     background.addSubview(checkboxesButton)
 
+    matrixButton = FooterIconButton(symbolName: "square.grid.2x2", label: "Show Quadrants")
+    matrixButton.setFrameOrigin(NSPoint(x: 12 + checkboxesButton.frame.width, y: 8))
+    matrixButton.target = self
+    matrixButton.action = #selector(toggleMatrix(_:))
+    matrixButton.autoresizingMask = [.maxXMargin, .maxYMargin]
+    background.addSubview(matrixButton)
+
     let fontSizeButton = FooterIconButton(symbolName: "textformat.size", label: "Text Size")
     fontSizeButton.setFrameOrigin(NSPoint(x: size.width - 28 - fontSizeButton.frame.width, y: 8))
     fontSizeButton.toolTip = "Text Size (⌘+ / ⌘−)"
@@ -251,6 +281,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     let checkboxesItem = NSMenuItem(title: "Show Checkboxes", action: #selector(toggleCheckboxes(_:)), keyEquivalent: "")
     checkboxesItem.target = self
     menu.addItem(checkboxesItem)
+    let matrixItem = NSMenuItem(title: "Eisenhower Matrix", action: #selector(toggleMatrix(_:)), keyEquivalent: "")
+    matrixItem.target = self
+    menu.addItem(matrixItem)
     let loginItem = NSMenuItem(title: "Open at Login", action: #selector(toggleOpenAtLogin(_:)), keyEquivalent: "")
     loginItem.target = self
     menu.addItem(loginItem)
@@ -288,6 +321,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     checkboxesItem.keyEquivalentModifierMask = [.command, .shift]
     checkboxesItem.target = self
     noteMenu.addItem(checkboxesItem)
+    let matrixItem = NSMenuItem(title: "Eisenhower Matrix", action: #selector(toggleMatrix(_:)), keyEquivalent: "m")
+    matrixItem.keyEquivalentModifierMask = [.command, .shift]
+    matrixItem.target = self
+    noteMenu.addItem(matrixItem)
     noteMenu.addItem(.separator())
     // ⌘= is listed too, because ⌘+ needs Shift on most keyboards.
     for (title, action, key) in [
@@ -323,7 +360,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
   func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
     switch menuItem.action {
     case #selector(toggleCheckboxes(_:)):
-      menuItem.title = note.mode == .checklist ? "Hide Checkboxes" : "Show Checkboxes"
+      menuItem.title = note.mode == .text ? "Show Checkboxes" : "Hide Checkboxes"
+    case #selector(toggleMatrix(_:)):
+      menuItem.state = note.mode == .matrix ? .on : .off
     case #selector(toggleOpenAtLogin(_:)):
       menuItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
     case #selector(increaseFontSize(_:)):
