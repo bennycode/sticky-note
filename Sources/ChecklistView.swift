@@ -6,7 +6,7 @@ protocol ChecklistViewDelegate: AnyObject {
 }
 
 /// A Google Keep style checklist: Return splits an item, Backspace at its start merges it into the one above,
-/// and checked items collect in a collapsible section at the bottom. With `showsQuadrants` the open items are
+/// and checked items collect in a collapsible section at the bottom. With `showsQuadrants` the items are
 /// split across the four Eisenhower quadrants instead of sitting in one list, and dragging an item into another
 /// quadrant re-prioritizes it.
 final class ChecklistView: NSView, NSTextFieldDelegate {
@@ -98,8 +98,9 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
   // MARK: - Building rows
 
   private func group(for item: ChecklistItem) -> Group {
-    if item.isChecked { return .checked }
-    guard showsQuadrants, let quadrant = item.quadrant else { return .unsorted }
+    // In matrix mode a checked item stays crossed out in its quadrant instead of leaving it.
+    guard showsQuadrants else { return item.isChecked ? .checked : .unsorted }
+    guard let quadrant = item.quadrant else { return .unsorted }
     return .quadrant(quadrant)
   }
 
@@ -142,7 +143,7 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
     }
 
     let checkedItems = items.filter(\.isChecked)
-    guard !checkedItems.isEmpty else { return }
+    guard !showsQuadrants, !checkedItems.isEmpty else { return }
 
     let separator = NSBox()
     separator.boxType = .custom
@@ -438,7 +439,7 @@ final class ChecklistView: NSView, NSTextFieldDelegate {
   private func dropTarget(forItemWithID id: UUID, over point: NSPoint, orderingBy y: CGFloat, in documentView: NSView) -> (group: Group, position: Int)? {
     guard let item = items.first(where: { $0.id == id }) else { return nil }
     // Checked items stay among the checked ones; quadrants are for what's still open.
-    let candidates: [Group] = item.isChecked ? [.checked] : openGroups
+    let candidates: [Group] = item.isChecked && !showsQuadrants ? [.checked] : openGroups
     guard let group = candidates.min(by: { distance(from: point, to: $0, in: documentView) < distance(from: point, to: $1, in: documentView) }),
           let stack = groupStacks[group]
     else { return nil }
