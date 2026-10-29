@@ -175,6 +175,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     showNoteContent()
   }
 
+  /// Throws away the note's contents after a confirmation, keeping the mode and text size.
+  @objc private func clearNote(_ sender: Any?) {
+    let alert = NSAlert()
+    alert.messageText = "Delete everything in this note?"
+    alert.informativeText = "This can't be undone."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "Delete")
+    alert.addButton(withTitle: "Cancel")
+    alert.buttons[0].hasDestructiveAction = true
+    guard alert.runModal() == .alertFirstButtonReturn else { return }
+    note.text = ""
+    note.items = []
+    store.save(note)
+    showNoteContent()
+  }
+
   private func makeWindow() -> NoteWindow {
     let size = NSSize(width: 280, height: 280)
     let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
@@ -237,6 +253,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSTextViewDelegate, NS
     matrixButton.action = #selector(toggleMatrix(_:))
     matrixButton.autoresizingMask = [.maxXMargin, .maxYMargin]
     background.addSubview(matrixButton)
+
+    let clearButton = FooterIconButton(symbolName: "trash", label: "Clear Note")
+    clearButton.setFrameOrigin(NSPoint(x: matrixButton.frame.maxX, y: 8))
+    clearButton.toolTip = "Clear Note"
+    clearButton.target = self
+    clearButton.action = #selector(clearNote(_:))
+    clearButton.autoresizingMask = [.maxXMargin, .maxYMargin]
+    background.addSubview(clearButton)
 
     let fontSizeButton = FooterIconButton(symbolName: "textformat.size", label: "Text Size")
     fontSizeButton.setFrameOrigin(NSPoint(x: size.width - 28 - fontSizeButton.frame.width, y: 8))
